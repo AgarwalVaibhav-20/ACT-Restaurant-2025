@@ -1,7 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://act-resto-backend.vercel.app/$1" },
-    { "source": "/booking", "destination": "/" },
     { "source": "/(.*)", "destination": "/" }
   ],
   "cleanUrls": true,
