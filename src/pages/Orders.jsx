@@ -21,7 +21,6 @@ export default function Orders(){
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
-  const [tableNumber, setTableNumber] = useState('T1')
   const [placing, setPlacing] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -196,7 +195,6 @@ export default function Orders(){
       // इसलिए यहां से restaurantId pass करना optional है
       const res = await api.createOrder({
         items: payloadItems,
-        tableNumber,
         customerName: name,
         customerAddress: address || '',
         // ✅ OPTIONAL: restaurantId pass करना optional है
@@ -220,12 +218,11 @@ export default function Orders(){
       <SectionHeader title="Order your favorites" subtitle="Live menu from your backend. Enter your details to place an order."/>
 
       {/* Customer details */}
-      <div className="card p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="card p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         <input className="rounded-xl border px-3 py-2" placeholder="Your name" value={name} onChange={e=>setName(e.target.value)} />
         <input className="rounded-xl border px-3 py-2" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
         <input className="rounded-xl border px-3 py-2" placeholder="Phone" value={phone} onChange={e=>setPhone(e.target.value)} />
         <input className="rounded-xl border px-3 py-2" placeholder="Address" value={address} onChange={e=>setAddress(e.target.value)} />
-        <input className="rounded-xl border px-3 py-2" placeholder="Table (e.g., T1)" value={tableNumber} onChange={e=>setTableNumber(e.target.value)} />
       </div>
 
       {/* Enhanced Animated Category Banner */}

@@ -19,6 +19,9 @@ export default function Booking(){
   const [timeSlots, setTimeSlots] = useState([])
   const [slotsError, setSlotsError] = useState('')
   const [tableWarning, setTableWarning] = useState('')
+  const [tablesByFloor, setTablesByFloor] = useState([])
+  const [loadingTables, setLoadingTables] = useState(false)
+  const [selectedFloor, setSelectedFloor] = useState(null)
 
   // Set default dates to today
   useEffect(() => {
@@ -26,6 +29,30 @@ export default function Booking(){
     setStartDate(today)
     setEndDate(today)
   }, [])
+
+  // Fetch tables on component mount
+  useEffect(() => {
+    fetchTables()
+  }, [])
+
+  async function fetchTables() {
+    try {
+      setLoadingTables(true)
+      const data = await api.getTables()
+      const floors = data?.data || []
+      setTablesByFloor(floors)
+      // Auto-select first floor if available
+      if (floors.length > 0) {
+        const firstFloorId = floors[0].floorId?.toString() || floors[0].floorId
+        setSelectedFloor(firstFloorId)
+      }
+    } catch (error) {
+      console.error('Error fetching tables:', error)
+      setTablesByFloor([])
+    } finally {
+      setLoadingTables(false)
+    }
+  }
 
   // Fetch available time slots when startDate changes
   useEffect(() => {
@@ -367,72 +394,130 @@ export default function Booking(){
         <div className="card p-6">
           <h3 className="font-medium mb-4">Restaurant Table Layout</h3>
           
-          {!selectedTimeSlot ? (
+          {loadingTables ? (
+            <div className="text-center py-8">
+              <p className="text-stone-500 text-sm">Loading tables...</p>
+            </div>
+          ) : !selectedTimeSlot ? (
             <div className="text-center py-8">
               <p className="text-stone-500 text-sm">Select a time slot to see table availability</p>
             </div>
+          ) : tablesByFloor.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-stone-500 text-sm">No tables found. Please add tables in the admin panel.</p>
+            </div>
           ) : (
             <>
+              {/* Floor Selection */}
+              {tablesByFloor.length > 1 && (
+                <div className="mb-4">
+                  <label className="text-sm text-stone-600 font-medium mb-2 block">Select Floor</label>
+                  <select 
+                    className="w-full rounded-xl border border-stone-300 px-3 py-2"
+                    value={selectedFloor || ''}
+                    onChange={e => {
+                      setSelectedFloor(e.target.value)
+                      setSelectedTable('') // Reset table selection when floor changes
+                    }}
+                  >
+                    {tablesByFloor.map(floor => {
+                      const floorId = floor.floorId?.toString() || floor.floorId
+                      return (
+                        <option key={floorId} value={floorId}>
+                          {floor.floorName} ({floor.tables.length} tables)
+                        </option>
+                      )
+                    })}
+                  </select>
+                </div>
+              )}
+
               <div className="mb-4 p-3 bg-brand-50 rounded-lg">
                 <p className="text-sm font-medium text-brand-800">
                   Time Slot: {selectedTimeSlot.time}
                 </p>
+                {selectedFloor && (
+                  <p className="text-xs text-brand-600 mt-1">
+                    Floor: {tablesByFloor.find(f => {
+                      const floorId = f.floorId?.toString() || f.floorId
+                      return floorId === selectedFloor
+                    })?.floorName || 'N/A'}
+                  </p>
+                )}
                 <p className="text-xs text-brand-600">
                   Available: {(selectedTimeSlot.availableTables || []).length} tables | 
                   Booked: {(selectedTimeSlot.bookedTables || []).length} tables
                 </p>
               </div>
               
-              {/* Table Grid Layout */}
-              <div className="grid grid-cols-5 gap-3 mb-4">
-                {Array.from({length: 20}, (_, i) => i + 1).map(n => {
-                  const tableId = `T${n}`
-                  const availableTables = selectedTimeSlot.availableTables || []
-                  const bookedTables = selectedTimeSlot.bookedTables || []
-                  const isBooked = bookedTables.includes(tableId)
-                  const isSelected = selectedTable === tableId
-                  // If no availableTables array, assume all tables are available unless booked
-                  const isAvailable = availableTables.length > 0 
-                    ? availableTables.includes(tableId)
-                    : !isBooked
-                  
+              {/* Table Grid Layout - Show only tables from selected floor */}
+              {selectedFloor && (() => {
+                const currentFloor = tablesByFloor.find(f => {
+                  const floorId = f.floorId?.toString() || f.floorId
+                  return floorId === selectedFloor
+                })
+                const floorTables = currentFloor?.tables || []
+                const availableTables = selectedTimeSlot.availableTables || []
+                const bookedTables = selectedTimeSlot.bookedTables || []
+                
+                if (floorTables.length === 0) {
                   return (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => {
-                        if (isAvailable && !isBooked) {
-                          setSelectedTable(tableId)
-                          setTableWarning('')
-                        } else if (isBooked) {
-                          setTableWarning(`Table ${tableId} is already booked for ${selectedTimeSlot.time}. Please choose another table.`)
-                          setTimeout(() => setTableWarning(''), 3000)
-                        }
-                      }}
-                      disabled={isBooked}
-                      className={`aspect-square rounded-xl border-2 flex items-center justify-center text-xs font-medium ${
-                        isSelected 
-                          ? 'bg-brand-600 text-white border-brand-600 shadow-lg transform scale-105 table-selected'
-                          : isBooked 
-                            ? 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed table-booked'
-                            : isAvailable
-                              ? 'bg-green-50 text-green-700 border-green-300 cursor-pointer table-available'
-                              : 'bg-stone-50 text-stone-500 border-stone-200 cursor-not-allowed'
-                      }`}
-                    >
-                      <div className="text-center">
-                        <div className="font-semibold">{tableId}</div>
-                        {isBooked && (
-                          <div className="text-xs opacity-75">Booked</div>
-                        )}
-                        {isSelected && (
-                          <div className="text-xs opacity-90">Selected</div>
-                        )}
-                      </div>
-                    </button>
+                    <div className="text-center py-8">
+                      <p className="text-stone-500 text-sm">No tables found on this floor.</p>
+                    </div>
                   )
-                })}
-              </div>
+                }
+                
+                return (
+                  <div className="grid grid-cols-5 gap-3 mb-4">
+                    {floorTables.map(table => {
+                      const tableId = table.tableNumber
+                      // Check both tableId and "T" + tableId format for booked tables
+                      const isBooked = bookedTables.includes(tableId) || bookedTables.includes(`T${tableId}`)
+                      const isSelected = selectedTable === tableId
+                      // If no availableTables array, assume all tables are available unless booked
+                      // Also check both formats (tableId and "T" + tableId)
+                      const isAvailable = availableTables.length > 0 
+                        ? (availableTables.includes(tableId) || availableTables.includes(`T${tableId}`))
+                        : !isBooked
+                      
+                      return (
+                        <button
+                          key={table._id}
+                          type="button"
+                          onClick={() => {
+                            if (!isBooked) {
+                              setSelectedTable(tableId)
+                              setTableWarning('')
+                            } else {
+                              setTableWarning(`Table ${tableId} is already booked for ${selectedTimeSlot.time}. Please choose another table.`)
+                              setTimeout(() => setTableWarning(''), 3000)
+                            }
+                          }}
+                          disabled={isBooked}
+                          className={`aspect-square rounded-xl border-2 flex items-center justify-center text-xs font-medium transition-all ${
+                            isSelected 
+                              ? 'bg-brand-600 text-white border-brand-600 shadow-lg transform scale-105 table-selected'
+                              : isBooked 
+                                ? 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed table-booked'
+                                : 'bg-green-50 text-green-700 border-green-300 cursor-pointer hover:bg-green-100 hover:border-green-400 table-available'
+                          }`}
+                        >
+                          <div className="text-center">
+                            <div className="font-semibold">{tableId}</div>
+                            {isBooked && (
+                              <div className="text-xs opacity-75">Booked</div>
+                            )}
+                            {isSelected && (
+                              <div className="text-xs opacity-90">Selected</div>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
               
               {/* Table Status Legend */}
               <div className="space-y-2 text-xs">

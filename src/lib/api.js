@@ -264,6 +264,45 @@ export const api = {
     const list = data?.data || []
     return list.filter(q => q?.restaurantId === RESTAURENT_ID)
   },
+  async getTables() {
+    assertEnv()
+    try {
+      const baseUrl = API_BASE_URL || 'http://localhost:4000'
+      
+      console.log('═══════════════════════════════════════════════════════════');
+      console.log('📂 FRONTEND: Fetching Tables (Floor-wise)');
+      console.log('═══════════════════════════════════════════════════════════');
+      console.log('📋 RESTAURANT_ID INFO:');
+      console.log('   🔹 Frontend RESTAURENT_ID:', RESTAURENT_ID || 'NOT SET');
+      console.log('   🔹 API Base URL:', baseUrl);
+      
+      // Use frontend .env VITE_RESTAURENT_ID - send in query parameter
+      const url = `${baseUrl}/public/tables${RESTAURENT_ID ? `?restaurantId=${encodeURIComponent(RESTAURENT_ID)}` : ''}`
+      console.log('   🔹 Final URL:', url);
+      console.log('   📝 Note: Using frontend VITE_RESTAURENT_ID from .env.local - backend .env RESTAURANT_ID NOT used');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      const response = await fetch(url)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }))
+        console.error('❌ Tables API Error:', errorData)
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`)
+      }
+      const data = await asJson(response)
+      console.log('✅ Tables fetched successfully:', data?.data?.length || 0, 'floors')
+      if (data?.data?.length > 0) {
+        data.data.forEach(floor => {
+          console.log(`   📋 ${floor.floorName}: ${floor.tables.length} tables`)
+        })
+      }
+      console.log('═══════════════════════════════════════════════════════════');
+      
+      return data
+    } catch (error) {
+      console.error('Error fetching tables:', error)
+      throw error
+    }
+  },
 
   // Creates
   async createCustomer({ name, email, phoneNumber, address }) {

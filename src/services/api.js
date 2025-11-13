@@ -2,8 +2,11 @@
 // Base URL resolution:
 // - In production, set VITE_API_URL to your backend (e.g., https://api.yourdomain.com)
 // - In development, defaults to http://localhost:4000
+/* global __API_BASE_URL__ */
+
 const getBaseUrl = () => {
-  const envUrl = (import.meta?.env?.VITE_API_URL ?? '').toString().trim();
+  const globalBase = typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : '';
+  const envUrl = (import.meta?.env?.VITE_API_URL ?? import.meta?.env?.VITE_API_BASE_URL ?? globalBase ?? '').toString().trim();
   if (envUrl) return envUrl.replace(/\/$/, '');
 
   if (typeof window !== 'undefined') {
@@ -17,6 +20,11 @@ const getBaseUrl = () => {
   // Note: In production on Vercel, add a rewrite for /api/(.*) -> https://your-backend/$1
   return '/api';
 };
+
+const normalizeId = (value) => {
+  if (typeof value !== 'string') return value || ''
+  return value.trim().replace(/^"|"$/g, '')
+}
 
 class ApiService {
   constructor() {
@@ -85,6 +93,7 @@ class ApiService {
     };
 
     const url = this.baseURL ? `${this.baseURL}${endpoint}` : endpoint;
+    console.log('ApiService.publicRequest ->', url)
 
     let response;
     try {
@@ -185,7 +194,11 @@ class ApiService {
   }
 
   async getRestaurantProfile(restaurantId) {
-    return this.publicRequest(`/rest-profile/${restaurantId}`);
+    const id = normalizeId(restaurantId)
+    if (!id) {
+      throw new Error('Restaurant ID is required to fetch restaurant profile')
+    }
+    return this.publicRequest(`/public/rest-profile/${encodeURIComponent(id)}`);
   }
 
   async getAllUsers() {
@@ -202,7 +215,7 @@ class ApiService {
     }
     
     // Use restaurantId from localStorage or function parameter
-    const finalRestaurantId = localStorageRestaurantId || restaurantId;
+    const finalRestaurantId = normalizeId(localStorageRestaurantId || restaurantId);
     
     // Use public route with localStorage restaurantId in query params
     let url = '/menu/public/allmenues';

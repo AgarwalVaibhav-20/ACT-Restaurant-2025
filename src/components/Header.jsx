@@ -1,10 +1,68 @@
+import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { ShoppingBag, CalendarDays, Menu as MenuIcon, Settings } from 'lucide-react'
 import { useAdmin } from '../contexts/AdminContext'
+import apiService from '../services/api'
+import { RESTAURANT_FALLBACK_NAME, RESTAURANT_LOGO_SRC } from '../config/restaurant'
+
+/* global __RESTAURENT_ID__ */
+
+const INVALID_NAMES = new Set(['', 'not provided', 'not_provided', 'undefined', 'null'])
 
 export default function Header() {
   // useAdmin now returns default values instead of throwing error
-  const { isAdminMode, isAuthenticated, enterAdminMode, exitAdminMode } = useAdmin()
+  const { isAdminMode, enterAdminMode, exitAdminMode } = useAdmin()
+  const [restaurantName, setRestaurantName] = useState(RESTAURANT_FALLBACK_NAME)
+
+  useEffect(() => {
+    const envRestaurantId = import.meta?.env?.VITE_RESTAURENT_ID
+    const globalRestaurantId = typeof __RESTAURENT_ID__ !== 'undefined' ? __RESTAURENT_ID__ : ''
+    const rawRestaurantId = envRestaurantId ?? globalRestaurantId
+    const restaurantId = typeof rawRestaurantId === 'string' 
+      ? rawRestaurantId.trim().replace(/^"|"$/g, '') 
+      : rawRestaurantId
+
+    console.log('Header: resolved restaurantId from env:', restaurantId)
+
+    if (!restaurantId) {
+      console.warn('VITE_RESTAURENT_ID environment variable is missing. Falling back to default header title.')
+      return
+    }
+
+    let isMounted = true
+
+    const loadRestaurantName = async () => {
+      try {
+        const response = await apiService.getRestaurantProfile(restaurantId)
+        const name =
+          response?.restaurant?.restaurantName ||
+          response?.profile?.restaurantName ||
+          response?.restaurantName ||
+          response?.data?.restaurantName ||
+          response?.name ||
+          response?.title ||
+          RESTAURANT_FALLBACK_NAME
+
+        if (isMounted) {
+          const normalizedName = typeof name === 'string' ? name.trim() : ''
+          const lowerName = normalizedName.toLowerCase()
+          const finalName = normalizedName && !INVALID_NAMES.has(lowerName)
+            ? normalizedName
+            : RESTAURANT_FALLBACK_NAME
+
+          setRestaurantName(finalName)
+        }
+      } catch (error) {
+        console.error('Failed to fetch restaurant name for header:', error)
+      }
+    }
+
+    loadRestaurantName()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
   
   return (
     <header className="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/90 border-b border-stone-200">
@@ -13,8 +71,18 @@ export default function Header() {
           <button className="inline-flex size-9 items-center justify-center rounded-full border border-stone-300 text-stone-700 lg:hidden">
             <MenuIcon className="size-5" />
           </button>
-          <Link to="/" className="font-[var(--font-display)] text-xl tracking-tight">
-            Restaurent
+          <Link to="/" className="group flex items-center gap-3 text-stone-900">
+            <span className="inline-flex h-[42px] w-[42px] min-w-[42px] items-center justify-center overflow-hidden rounded-full bg-white shadow-sm ring-1 ring-stone-200 transition group-hover:ring-brand-500/60 group-active:ring-brand-600">
+              <img
+                src={RESTAURANT_LOGO_SRC}
+                alt={`${restaurantName} logo`}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="font-semibold text-[1.35rem] tracking-tight transition group-hover:text-brand-700" style={{ fontFamily: "'Playfair Display', 'Cormorant Garamond', serif" }}>
+              {restaurantName}
+            </span>
           </Link>
         </div>
 

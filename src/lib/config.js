@@ -1,10 +1,20 @@
+/* global __RESTAURENT_ID__, __API_BASE_URL__ */
+
+const globalApiBase = typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : ''
+const globalRestaurantId = typeof __RESTAURENT_ID__ !== 'undefined' ? __RESTAURENT_ID__ : ''
+
 // Get API base URL from environment variable
 // Defaults to http://localhost:4000 for local development
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000').replace(/\/$/, '')
+export const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  globalApiBase ||
+  'http://localhost:4000'
+).replace(/\/$/, '')
 
 // Get Restaurant ID from environment variable
 // This should match the RESTAURANT_ID in backend .env file
-export const RESTAURENT_ID = import.meta.env.VITE_RESTAURENT_ID || ''
+export const RESTAURENT_ID = import.meta.env.VITE_RESTAURENT_ID || globalRestaurantId || ''
 
 export function assertEnv() {
   // Don't throw errors, just warn - backend will handle restaurantId from env
