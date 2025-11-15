@@ -527,6 +527,48 @@ export const api = {
     }
   },
 
+  async getAvailableTables(userStart, userEnd) {
+    assertEnv()
+    try {
+      const baseUrl = API_BASE_URL || 'http://localhost:4000'
+      const url = `${baseUrl}/reservations/available-tables`
+      console.log('🌍 Making request to available-tables endpoint:', url)
+      console.log('📅 User Start:', userStart)
+      console.log('📅 User End:', userEnd)
+      
+      const payload = {
+        userStart: userStart, // ISO format datetime string
+        userEnd: userEnd, // ISO format datetime string
+        restaurantId: RESTAURENT_ID
+      }
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await asJson(response)
+      console.log('✅ Available tables API response received')
+      console.log(`📊 Tables summary: ${data.availableCount || 0} available, ${data.bookedCount || 0} booked`)
+      
+      if (data && (data.success === false || data.error)) {
+        throw new Error(data.message || data.error || 'API returned error response')
+      }
+      
+      return data
+    } catch (error) {
+      console.error('Error fetching available tables:', error)
+      throw error
+    }
+  },
+
   async createReservation({ startDate, endDate, time, guests = 2, customerName, contact, notes, tableNumber, totalPayment = 0, advancePayment = 0 }) {
     assertEnv()
     // Build start and end time from startDate/endDate and time

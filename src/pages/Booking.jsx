@@ -1,11 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import SectionHeader from '../components/SectionHeader'
 import { api } from '../lib/api'
+import { API_BASE_URL, RESTAURENT_ID } from '../lib/config'
 
 export default function Booking(){
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState(null)
   const [selectedTable, setSelectedTable] = useState('')
   const [guests, setGuests] = useState(2)
   const [name, setName] = useState('')
@@ -15,19 +13,34 @@ export default function Booking(){
   const [advancePayment, setAdvancePayment] = useState('')
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
-  const [loadingSlots, setLoadingSlots] = useState(false)
-  const [timeSlots, setTimeSlots] = useState([])
-  const [slotsError, setSlotsError] = useState('')
   const [tableWarning, setTableWarning] = useState('')
   const [tablesByFloor, setTablesByFloor] = useState([])
   const [loadingTables, setLoadingTables] = useState(false)
   const [selectedFloor, setSelectedFloor] = useState(null)
+  const [userStart, setUserStart] = useState('')
+  const [userEnd, setUserEnd] = useState('')
+  const [availableTablesData, setAvailableTablesData] = useState(null)
+  const [loadingAvailableTables, setLoadingAvailableTables] = useState(false)
+  const [availableTablesError, setAvailableTablesError] = useState('')
 
-  // Set default dates to today
+  // Set default datetimes (today, 1 hour from now to 2 hours from now)
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
-    setStartDate(today)
-    setEndDate(today)
+    const now = new Date()
+    const defaultStart = new Date(now.getTime() + 60 * 60 * 1000) // 1 hour from now
+    const defaultEnd = new Date(now.getTime() + 2 * 60 * 60 * 1000) // 2 hours from now
+    
+    // Format for datetime-local input (YYYY-MM-DDTHH:mm)
+    const formatForInput = (date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      return `${year}-${month}-${day}T${hours}:${minutes}`
+    }
+    
+    setUserStart(formatForInput(defaultStart))
+    setUserEnd(formatForInput(defaultEnd))
   }, [])
 
   // Fetch tables on component mount
@@ -54,108 +67,82 @@ export default function Booking(){
     }
   }
 
-  // Fetch available time slots when startDate changes
+  // Fetch available tables when userStart or userEnd changes
   useEffect(() => {
-    if (startDate) {
-      fetchTimeSlots()
+    if (userStart && userEnd) {
+      fetchAvailableTables()
     }
-  }, [startDate])
+  }, [userStart, userEnd])
 
-  async function fetchTimeSlots() {
+  async function fetchAvailableTables() {
     try {
-      setLoadingSlots(true)
-      setSlotsError('')
-      const data = await api.getAvailableTimeSlots(startDate)
+      setLoadingAvailableTables(true)
+      setAvailableTablesError('')
       
-      // Filter out past time slots
-      const now = new Date()
-      const isToday = startDate === now.toISOString().split('T')[0]
+      // Convert datetime-local format to ISO string
+      const userStartISO = new Date(userStart).toISOString()
+      const userEndISO = new Date(userEnd).toISOString()
       
-      let filteredSlots = data.timeSlots || []
+      console.log('📅 Fetching available tables for:', userStartISO, 'to', userEndISO)
       
-      if (isToday) {
-        filteredSlots = filteredSlots.filter(slot => {
-          // Skip slots marked as past by backend
-          if (slot.isPast) return false
-          
-          // Double-check on frontend
-          const [hours, minutes] = slot.time.split(':').map(Number)
-          const slotTime = new Date()
-          slotTime.setHours(hours, minutes, 0, 0)
-          
-          return slotTime > now
-        })
-      }
-      
-      // Only show available slots (not fully booked)
-      filteredSlots = filteredSlots.filter(slot => slot.available !== false)
-      
-      // Ensure all slots have availableTables and bookedTables arrays
-      // If backend doesn't provide them, use default empty arrays
-      filteredSlots = filteredSlots.map(slot => ({
-        ...slot,
-        availableTables: slot.availableTables || [], // Default to empty array if not provided
-        bookedTables: slot.bookedTables || [], // Default to empty array if not provided
-      }))
-      
-      // Debug: Log first slot to see data structure
-      if (filteredSlots.length > 0) {
-        console.log('Sample slot data:', JSON.stringify(filteredSlots[0], null, 2))
-      }
-      
-      setTimeSlots(filteredSlots)
-      
-      // Check if we're using fallback data
-      if (data && data.fallbackMode) {
-        if (data.usingRealReservations) {
-          console.log('🎯 Using enhanced fallback mode with REAL reservation data')
-          console.log('Real bookings from database are being applied to time slots')
-        } else {
-          console.log('🔧 Using fallback mode with simulated data')
-          console.log('Backend routing issue prevents real-time availability checking')
-        }
-        // Clear any error messages since fallback is working
-        setSlotsError('')
-      } else if (data && data.timeSlots && data.timeSlots.length > 0 && data.bookedSlots === 0) {
-        console.log('Using fallback time slots - basic mode')
-        setSlotsError('') // Clear any previous errors
-      }
+      const data = await api.getAvailableTables(userStartISO, userEndISO)
+      setAvailableTablesData(data)
     } catch (error) {
-      setSlotsError(error?.message || 'Failed to load available time slots')
-      setTimeSlots([])
+      console.error('Error fetching available tables:', error)
+      setAvailableTablesError(error?.message || 'Failed to load available tables')
+      setAvailableTablesData(null)
     } finally {
-      setLoadingSlots(false)
+      setLoadingAvailableTables(false)
     }
   }
 
   async function submit(){
     setMessage('')
-    if (!startDate || !endDate || !selectedTimeSlot || !name) {
-      setMessage('Please select start date, end date, time slot, and enter your name.')
+    if (!userStart || !userEnd || !name) {
+      setMessage('Please select start datetime, end datetime, and enter your name.')
       return
     }
     if (!selectedTable) {
       setMessage('Please select a table.')
       return
     }
-    if (new Date(endDate) < new Date(startDate)) {
-      setMessage('End date must be on or after start date.')
+    if (new Date(userEnd) <= new Date(userStart)) {
+      setMessage('End datetime must be after start datetime.')
       return
     }
     try {
       setSaving(true)
-      await api.createReservation({ 
-        startDate,
-        endDate,
-        time: selectedTimeSlot.time, 
-        guests, 
-        customerName: name, 
-        contact, 
-        notes,
+      // Convert datetime-local to ISO format
+      const startTimeISO = new Date(userStart).toISOString()
+      const endTimeISO = new Date(userEnd).toISOString()
+      
+      // Use the new API format with startTime and endTime directly
+      const baseUrl = API_BASE_URL || 'http://localhost:4000'
+      const payload = {
+        customerName: name || contact || 'Guest',
+        startTime: startTimeISO,
+        endTime: endTimeISO,
         tableNumber: selectedTable,
-        totalPayment: totalPayment ? parseFloat(totalPayment) : 0,
-        advancePayment: advancePayment ? parseFloat(advancePayment) : 0
+        payment: totalPayment ? parseFloat(totalPayment) : 0,
+        advance: advancePayment ? parseFloat(advancePayment) : 0,
+        notes: notes || '',
+        restaurantId: RESTAURENT_ID
+      }
+      
+      const response = await fetch(`${baseUrl}/reservations/add/env`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || `HTTP ${response.status}`)
+      }
+      
+      const result = await response.json()
       setMessage('Reservation booked successfully!')
       // Reset form
       setName('')
@@ -163,10 +150,9 @@ export default function Booking(){
       setNotes('')
       setTotalPayment('')
       setAdvancePayment('')
-      setSelectedTimeSlot(null)
       setSelectedTable('')
-      // Refresh time slots to show updated availability
-      await fetchTimeSlots()
+      // Refresh available tables to show updated availability
+      await fetchAvailableTables()
     } catch (e) {
       console.error('Booking error:', e)
       // Try to parse error message from response
@@ -185,14 +171,6 @@ export default function Booking(){
     }
   }
 
-  // Get minimum date (today)
-  const minDate = new Date().toISOString().split('T')[0]
-
-  // Get maximum date (30 days from now)
-  const maxDate = new Date()
-  maxDate.setDate(maxDate.getDate() + 30)
-  const maxDateString = maxDate.toISOString().split('T')[0]
-
   return (
     <div className="section py-12 space-y-10">
       <SectionHeader title="Reserve a table" subtitle="Book your preferred time slot and table. Available slots are shown in real-time."/>
@@ -200,91 +178,56 @@ export default function Booking(){
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left: form */}
         <div className="card p-6 space-y-6 lg:col-span-2">
-          {/* Start Date Selection */}
+          {/* Start DateTime Selection */}
           <div>
-            <label className="text-sm text-stone-600 font-medium">Start Date *</label>
+            <label className="text-sm text-stone-600 font-medium">Start Date & Time *</label>
             <input 
-              type="date" 
+              type="datetime-local" 
               className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2" 
-              value={startDate} 
-              onChange={e => setStartDate(e.target.value)}
-              min={minDate}
-              max={maxDateString}
+              value={userStart} 
+              onChange={e => setUserStart(e.target.value)}
+              min={new Date().toISOString().slice(0, 16)}
             />
-            <p className="text-xs text-stone-500 mt-1">You can book up to 30 days in advance</p>
+            <p className="text-xs text-stone-500 mt-1">Select when your reservation starts</p>
           </div>
 
-          {/* End Date Selection */}
+          {/* End DateTime Selection */}
           <div>
-            <label className="text-sm text-stone-600 font-medium">End Date *</label>
+            <label className="text-sm text-stone-600 font-medium">End Date & Time *</label>
             <input 
-              type="date" 
+              type="datetime-local" 
               className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2" 
-              value={endDate} 
-              onChange={e => setEndDate(e.target.value)}
-              min={startDate || minDate}
-              max={maxDateString}
+              value={userEnd} 
+              onChange={e => setUserEnd(e.target.value)}
+              min={userStart || new Date().toISOString().slice(0, 16)}
             />
-            <p className="text-xs text-stone-500 mt-1">End date must be on or after start date</p>
+            <p className="text-xs text-stone-500 mt-1">Select when your reservation ends</p>
           </div>
 
-          {/* Time Slots */}
-          <div>
-            <label className="text-sm text-stone-600 font-medium">Available Time Slots</label>
-            {loadingSlots && (
-              <div className="mt-2 p-4 bg-stone-50 rounded-xl">
-                <p className="text-stone-600">Loading available time slots...</p>
-              </div>
-            )}
-            {slotsError && (
-              <div className="mt-2 p-4 bg-red-50 rounded-xl">
-                <p className="text-red-600">{slotsError}</p>
-              </div>
-            )}
-            {!loadingSlots && !slotsError && timeSlots.length === 0 && (
-              <div className="mt-2 p-4 bg-yellow-50 rounded-xl">
-                <p className="text-yellow-600">No available time slots for this date</p>
-              </div>
-            )}
-            {!loadingSlots && !slotsError && timeSlots.length > 0 && (
-              <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {timeSlots.map((slot, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => {
-                      setSelectedTimeSlot(slot)
-                      setSelectedTable('') // Reset table selection
-                    }}
-                    className={`rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200 ${
-                      selectedTimeSlot?.time === slot.time
-                        ? 'bg-brand-600 text-white border-brand-600 shadow-lg'
-                        : 'bg-white hover:bg-brand-50 border-stone-300 hover:border-brand-300'
-                    }`}
-                  >
-                    {slot.time}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Table Selection Info */}
-          {selectedTimeSlot && (
-            <div className="animate-slide-up">
-              <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                <h4 className="text-sm font-medium text-blue-800 mb-2">Table Selection</h4>
-                <p className="text-xs text-blue-600 mb-2">
-                  Select your preferred table from the layout on the right. Available tables are shown in green, booked tables in gray.
-                </p>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
-                    {(selectedTimeSlot.availableTables || []).length} Available
-                  </span>
-                  <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded">
-                    {(selectedTimeSlot.bookedTables || []).length} Booked
-                  </span>
-                </div>
+          {/* Available Tables Status */}
+          {loadingAvailableTables && (
+            <div className="p-4 bg-stone-50 rounded-xl">
+              <p className="text-stone-600">Loading available tables...</p>
+            </div>
+          )}
+          {availableTablesError && (
+            <div className="p-4 bg-red-50 rounded-xl">
+              <p className="text-red-600">{availableTablesError}</p>
+            </div>
+          )}
+          {!loadingAvailableTables && !availableTablesError && availableTablesData && (
+            <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+              <h4 className="text-sm font-medium text-blue-800 mb-2">Available Tables</h4>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
+                  {availableTablesData.availableCount || 0} Available
+                </span>
+                <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded">
+                  {availableTablesData.bookedCount || 0} Booked
+                </span>
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                  {availableTablesData.totalTables || 0} Total
+                </span>
               </div>
             </div>
           )}
@@ -360,13 +303,12 @@ export default function Booking(){
           </div>
 
           {/* Booking Summary */}
-          {selectedTimeSlot && selectedTable && (
+          {selectedTable && userStart && userEnd && (
             <div className="bg-brand-50 rounded-xl p-4 animate-slide-up">
               <h4 className="font-medium text-brand-800 mb-2">Booking Summary</h4>
               <div className="space-y-1 text-sm text-brand-700">
-                <p><span className="font-medium">Start Date:</span> {new Date(startDate).toLocaleDateString()}</p>
-                <p><span className="font-medium">End Date:</span> {new Date(endDate).toLocaleDateString()}</p>
-                <p><span className="font-medium">Time:</span> {selectedTimeSlot.time}</p>
+                <p><span className="font-medium">Start:</span> {new Date(userStart).toLocaleString()}</p>
+                <p><span className="font-medium">End:</span> {new Date(userEnd).toLocaleString()}</p>
                 <p><span className="font-medium">Table:</span> {selectedTable}</p>
                 <p><span className="font-medium">Guests:</span> {guests}</p>
                 {totalPayment && <p><span className="font-medium">Total Payment:</span> ₹{parseFloat(totalPayment).toFixed(2)}</p>}
@@ -384,7 +326,7 @@ export default function Booking(){
           <button 
             className="btn btn-primary w-full sm:w-auto" 
             onClick={submit} 
-            disabled={saving || !selectedTimeSlot || !selectedTable || !name || !contact || !startDate || !endDate}
+            disabled={saving || !userStart || !userEnd || !selectedTable || !name || !contact}
           >
             {saving ? 'Booking...' : 'Confirm Reservation'}
           </button>
@@ -398,9 +340,13 @@ export default function Booking(){
             <div className="text-center py-8">
               <p className="text-stone-500 text-sm">Loading tables...</p>
             </div>
-          ) : !selectedTimeSlot ? (
+          ) : !userStart || !userEnd ? (
             <div className="text-center py-8">
-              <p className="text-stone-500 text-sm">Select a time slot to see table availability</p>
+              <p className="text-stone-500 text-sm">Please select start and end datetime to see available tables</p>
+            </div>
+          ) : !availableTablesData ? (
+            <div className="text-center py-8">
+              <p className="text-stone-500 text-sm">Loading available tables...</p>
             </div>
           ) : tablesByFloor.length === 0 ? (
             <div className="text-center py-8">
@@ -434,7 +380,13 @@ export default function Booking(){
 
               <div className="mb-4 p-3 bg-brand-50 rounded-lg">
                 <p className="text-sm font-medium text-brand-800">
-                  Time Slot: {selectedTimeSlot.time}
+                  Reservation Period
+                </p>
+                <p className="text-xs text-brand-600 mt-1">
+                  From: {new Date(userStart).toLocaleString()} 
+                </p>
+                <p className="text-xs text-brand-600">
+                  To: {new Date(userEnd).toLocaleString()}
                 </p>
                 {selectedFloor && (
                   <p className="text-xs text-brand-600 mt-1">
@@ -444,21 +396,31 @@ export default function Booking(){
                     })?.floorName || 'N/A'}
                   </p>
                 )}
-                <p className="text-xs text-brand-600">
-                  Available: {(selectedTimeSlot.availableTables || []).length} tables | 
-                  Booked: {(selectedTimeSlot.bookedTables || []).length} tables
+                <p className="text-xs text-brand-600 mt-1">
+                  Available: {availableTablesData?.availableCount || 0} tables | 
+                  Booked: {availableTablesData?.bookedCount || 0} tables
                 </p>
               </div>
               
-              {/* Table Grid Layout - Show only tables from selected floor */}
+              {/* Table Grid Layout - Show available + booked tables from selected floor */}
               {selectedFloor && (() => {
                 const currentFloor = tablesByFloor.find(f => {
                   const floorId = f.floorId?.toString() || f.floorId
                   return floorId === selectedFloor
                 })
                 const floorTables = currentFloor?.tables || []
-                const availableTables = selectedTimeSlot.availableTables || []
-                const bookedTables = selectedTimeSlot.bookedTables || []
+                const availableTablesList = availableTablesData?.availableTables || []
+                const bookedTablesList = availableTablesData?.bookedTables || []
+                
+                // Normalize table number helper
+                const normalizeTableNum = (num) => {
+                  if (!num) return '';
+                  let normalized = num.toString().trim();
+                  if (normalized.toUpperCase().startsWith('T')) {
+                    normalized = normalized.substring(1);
+                  }
+                  return normalized;
+                };
                 
                 if (floorTables.length === 0) {
                   return (
@@ -472,40 +434,51 @@ export default function Booking(){
                   <div className="grid grid-cols-5 gap-3 mb-4">
                     {floorTables.map(table => {
                       const tableId = table.tableNumber
-                      // Check both tableId and "T" + tableId format for booked tables
-                      const isBooked = bookedTables.includes(tableId) || bookedTables.includes(`T${tableId}`)
+                      const normalizedTableId = normalizeTableNum(tableId)
+                      
+                      const matchesList = (list) => list.some(item => {
+                        const normalizedItem = normalizeTableNum(item)
+                        return (
+                          normalizedTableId === normalizedItem ||
+                          tableId === item ||
+                          `T${normalizedTableId}` === item ||
+                          normalizedTableId === `T${normalizedItem}`
+                        )
+                      })
+                      
+                      const isAvailable = matchesList(availableTablesList)
+                      const isBooked = !isAvailable && matchesList(bookedTablesList)
                       const isSelected = selectedTable === tableId
-                      // If no availableTables array, assume all tables are available unless booked
-                      // Also check both formats (tableId and "T" + tableId)
-                      const isAvailable = availableTables.length > 0 
-                        ? (availableTables.includes(tableId) || availableTables.includes(`T${tableId}`))
-                        : !isBooked
+                      
+                      const buttonClasses = isSelected
+                        ? 'bg-brand-600 text-white border-brand-600 shadow-lg transform scale-105 table-selected'
+                        : isAvailable
+                          ? 'bg-green-50 text-green-700 border-green-300 cursor-pointer hover:bg-green-100 hover:border-green-400 table-available'
+                          : isBooked
+                            ? 'bg-orange-100 text-orange-700 border-orange-300 cursor-not-allowed table-booked'
+                            : 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed table-unavailable'
                       
                       return (
                         <button
                           key={table._id}
                           type="button"
                           onClick={() => {
-                            if (!isBooked) {
+                            if (isAvailable) {
                               setSelectedTable(tableId)
                               setTableWarning('')
+                            } else if (isBooked) {
+                              setTableWarning(`Table ${tableId} is already booked between ${new Date(userStart).toLocaleString()} and ${new Date(userEnd).toLocaleString()}. Please choose another table.`)
+                              setTimeout(() => setTableWarning(''), 3000)
                             } else {
-                              setTableWarning(`Table ${tableId} is already booked for ${selectedTimeSlot.time}. Please choose another table.`)
+                              setTableWarning(`Table ${tableId} is not available for this time period. Please choose another table.`)
                               setTimeout(() => setTableWarning(''), 3000)
                             }
                           }}
-                          disabled={isBooked}
-                          className={`aspect-square rounded-xl border-2 flex items-center justify-center text-xs font-medium transition-all ${
-                            isSelected 
-                              ? 'bg-brand-600 text-white border-brand-600 shadow-lg transform scale-105 table-selected'
-                              : isBooked 
-                                ? 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed table-booked'
-                                : 'bg-green-50 text-green-700 border-green-300 cursor-pointer hover:bg-green-100 hover:border-green-400 table-available'
-                          }`}
+                          className={`aspect-square rounded-xl border-2 flex items-center justify-center text-xs font-medium transition-all ${buttonClasses}`}
                         >
                           <div className="text-center">
                             <div className="font-semibold">{tableId}</div>
-                            {isBooked && (
+                            {isBooked && !isSelected && (
                               <div className="text-xs opacity-75">Booked</div>
                             )}
                             {isSelected && (
@@ -526,13 +499,16 @@ export default function Booking(){
                   <span className="text-stone-600">Available - Click to select</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-gray-200 border border-gray-300 rounded"></div>
-                  <span className="text-stone-600">Booked - Not available</span>
+                  <div className="w-4 h-4 bg-orange-100 border border-orange-300 rounded"></div>
+                  <span className="text-stone-600">Booked - Already reserved</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-brand-600 rounded"></div>
                   <span className="text-stone-600">Selected - Your choice</span>
                 </div>
+                <p className="text-xs text-stone-500 mt-2">
+                  Available tables are shown in green, booked ones in orange.
+                </p>
               </div>
               
               {/* Table Warning */}
@@ -551,7 +527,7 @@ export default function Booking(){
                     ✓ Table {selectedTable} selected
                   </p>
                   <p className="text-xs text-green-600">
-                    Ready for {guests} {guests === 1 ? 'guest' : 'guests'} at {selectedTimeSlot.time}
+                    Ready for {guests} {guests === 1 ? 'guest' : 'guests'} from {new Date(userStart).toLocaleString()} to {new Date(userEnd).toLocaleString()}
                   </p>
                 </div>
               )}
